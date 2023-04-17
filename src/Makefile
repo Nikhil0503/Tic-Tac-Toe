@@ -1,5 +1,7 @@
 CC=gcc
-CFLAGS=-Wall -g -Wextra -pedantic -std=c99 -fsanitize=address,undefined
+CFLAGS=-Wall -g -Wextra -pedantic -std=c99 -fsanitize=address,undefined -pthread
+
+all: ttts ttts.o ttt ttt.o
 
 ttts: ttts.o
 	$(CC) $(CFLAGS) -o $@ $^

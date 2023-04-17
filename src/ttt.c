@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <errno.h>
 
 int connect_inet(char *host, char *service) {
   struct addrinfo hints, *info_list, *info;
@@ -37,20 +38,26 @@ int connect_inet(char *host, char *service) {
   }
   return sock;
 }
+
 #define BUFLEN 256
+
 int main(int argc, char **argv) {
   int sock, bytes;
   char buf[BUFLEN];
-  if (argc != 3) {
+  if (argc < 3) {
     printf("Specify host and service\n");
     exit(EXIT_FAILURE);
-  }
-  sock = connect_inet(argv[1], argv[2]);
-  if (sock < 0)
+  } else if(argc > 3){
+    printf("Too many arguments.\n");
     exit(EXIT_FAILURE);
+  }
+  
+  sock = connect_inet(argv[1], argv[2]);
+  if (sock < 0) exit(EXIT_FAILURE);
   while ((bytes = read(STDIN_FILENO, buf, BUFLEN)) > 0) {
-    write(sock, buf, bytes);
+    int success = write(sock, buf, bytes);
     // FIXME: should check whether the write succeeded!
+    if(success == -1) printf("Invalid server.");
   }
   close(sock);
   return EXIT_SUCCESS;
