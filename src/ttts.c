@@ -13,6 +13,41 @@
 #include <unistd.h>
 #define QUEUE_SIZE 8
 volatile int active = 1;
+
+typedef struct client{
+  int socket;
+  int gameNumber; //Game the client is in.
+  char piece; //If the client is in a game, it's piece will be either X or O.
+  char *name; //Name of the client who is playing.
+}client;
+
+typedef struct Game{
+  client *playerOne; //
+  client *playerTwo;
+  char board[3][3];
+  int status;
+} game;
+
+int numOfClients = 20;
+int numOfGames = 5;
+
+int sendData(int socket, char *buffer, int size) {
+    char *ptr = buffer;
+    int len = 0;
+    while (len < size) {
+        int sent = send(socket, ptr + len, size - len, 0);
+        if (sent == -1) {
+            if (errno == EINTR) {
+                continue;
+            } else {
+                return -1;
+            }
+        }
+        len += sent;
+    }
+    return 0;
+}
+
 void handler() { active = 0; }
 // set up signal handlers for primary thread
 // return a mask blocking those signals for worker threads
@@ -28,12 +63,14 @@ void install_handlers(sigset_t *mask) {
   sigaddset(mask, SIGINT);
   sigaddset(mask, SIGTERM);
 }
+
 // data to be sent to worker threads
 struct connection_data {
   struct sockaddr_storage addr;
   socklen_t addr_len;
   int fd;
 };
+
 int open_listener(char *service, int queue_size) {
   struct addrinfo hint, *info_list, *info;
   int error, sock;
@@ -77,9 +114,11 @@ int open_listener(char *service, int queue_size) {
   }
   return sock;
 }
+
 #define BUFSIZE 256
 #define HOSTSIZE 100
 #define PORTSIZE 10
+
 void *read_data(void *arg) {
   struct connection_data *con = arg;
   char buf[BUFSIZE + 1], host[HOSTSIZE], port[PORTSIZE];
@@ -95,7 +134,14 @@ void *read_data(void *arg) {
   while (active && (bytes = read(con->fd, buf, BUFSIZE)) > 0) {
     buf[bytes] = '\0';
     printf("[%s:%s] read %d bytes |%s|\n", host, port, bytes, buf);
+    char buffer[5] = "Boy";
+    //Write to the server socket.
+    //Check to see if you have sent all of the bytes.
+    int byts = send(con->fd, buffer, strlen(buffer) + 1, 0);
+    if(byts == -1) printf("Can't send message back to server.");
+    printf("Number of bytes sent: %d\n", byts);
   }
+
   if (bytes == 0) {
     printf("[%s:%s] got EOF\n", host, port);
   } else if (bytes == -1) {
@@ -107,6 +153,7 @@ void *read_data(void *arg) {
   free(con);
   return NULL;
 }
+
 int main(int argc, char **argv) {
   sigset_t mask;
   struct connection_data *con;
@@ -119,7 +166,7 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   printf("Listening for incoming connections on %s\n", service);
   while (active) {
-    con = (struct connection_data *)malloc(sizeof(struct connection_data));
+    con = (struct connection_data *) malloc(sizeof(struct connection_data));
     con->addr_len = sizeof(struct sockaddr_storage);
     con->fd = accept(listener, (struct sockaddr *)&con->addr, &con->addr_len);
     if (con->fd < 0) {

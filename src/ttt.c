@@ -7,6 +7,29 @@
 #include <unistd.h>
 #include <errno.h>
 
+// int read_data(){
+
+// }
+
+int sendData(int socket, char *buffer, int size) {
+    char *ptr = buffer;
+    int len = 0;
+
+    while (len < size) {
+        int sent = send(socket, ptr + len, size - len, 0);
+        if (sent == -1) {
+            if (errno == EINTR) {
+                continue;
+            } else {
+                return -1;
+            }
+        }
+        len += sent;
+    }
+    return 0;
+}
+
+
 int connect_inet(char *host, char *service) {
   struct addrinfo hints, *info_list, *info;
   int sock, error;
@@ -31,6 +54,7 @@ int connect_inet(char *host, char *service) {
     }
     break;
   }
+
   freeaddrinfo(info_list);
   if (info == NULL) {
     fprintf(stderr, "Unable to connect to %s:%s\n", host, service);
@@ -55,10 +79,18 @@ int main(int argc, char **argv) {
   sock = connect_inet(argv[1], argv[2]);
   if (sock < 0) exit(EXIT_FAILURE);
   while ((bytes = read(STDIN_FILENO, buf, BUFLEN)) > 0) {
-    int success = write(sock, buf, bytes);
+    int success = send(sock, buf, bytes, 0);
     // FIXME: should check whether the write succeeded!
-    if(success == -1) printf("Invalid server.");
+    if(success == -1) printf("Can't send message to server.");
+    //Receive the response from the server
+    char response[150];
+    int receive = recv(sock, response, 150, 0);
+    //Check to see if you have read all of the bytes.
+    if(receive == -1) printf("Couldn't receive a response back from the server.");
+    printf("Message sent back: %s\n", response);
+    fflush(stdout);
   }
+  
   close(sock);
   return EXIT_SUCCESS;
 }
