@@ -19,16 +19,11 @@ typedef struct client{
   int gameNumber; //Game the client is in.
   char piece; //If the client is in a game, it's piece will be either X or O.
   char *name; //Name of the client who is playing.
-}client;
+  char *clientMoves; //Moves the client makes
+}Client;
 
-typedef struct Game{
-  client *playerOne; //
-  client *playerTwo;
-  char board[3][3];
-  int status;
-} game;
-
-int numOfClients = 20;
+int numOfClients = 20; //Initial number of clients.
+int currentNumOfClients = 0; //Current number of clients.
 int numOfGames = 5;
 
 int sendData(int socket, char *buffer, int size) {
@@ -165,6 +160,8 @@ int main(int argc, char **argv) {
   if (listener < 0)
     exit(EXIT_FAILURE);
   printf("Listening for incoming connections on %s\n", service);
+  //Initialize the list of clients here
+  Client **clients = malloc(numOfClients * sizeof(Client*));
   while (active) {
     con = (struct connection_data *) malloc(sizeof(struct connection_data));
     con->addr_len = sizeof(struct sockaddr_storage);
@@ -175,6 +172,22 @@ int main(int argc, char **argv) {
       // TODO check for specific error conditions
       continue;
     }
+    //Create a client here.
+    Client* client = malloc(sizeof(Client));
+    //Set the client's socket and  game numbevr(game num is 0)
+    client -> socket = con -> fd;
+    fprintf(stdout, "%d", client ->socket);
+    client -> gameNumber = 0;
+    client ->name = NULL;
+    client ->clientMoves = NULL;
+    //Add it to the array of clients(If need to realloc first, then add)
+    if(currentNumOfClients == numOfClients){
+      numOfClients *= 2;
+      clients = realloc(clients, numOfClients * sizeof(Client*));
+    }
+    clients[currentNumOfClients] = client;
+    currentNumOfClients++; //To store next client in next position.
+
     // temporarily disable signals
     // (the worker thread will inherit this mask, ensuring that SIGINT is
     // only delivered to this thread)
@@ -212,5 +225,12 @@ int main(int argc, char **argv) {
   // to get a timely shut-down of all threads, including those blocked by
   // read(), we will could maintain a global list of all active thread IDs
   // and use pthread_cancel() or pthread_kill() to wake each one
+
+  //Free all of the clients.
+  for (int i = 0; i < currentNumOfClients; i++)
+  {
+    free(clients[i]);
+  }
+  free(clients);
   return EXIT_SUCCESS;
 }
