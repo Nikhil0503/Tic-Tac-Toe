@@ -22,26 +22,16 @@ typedef struct client{
   char *clientMoves; //Moves the client makes
 }Client;
 
+/* We used a struct to pass in 2 arguments at once.*/
+typedef struct arguments{
+  struct connection_data *connection; //Connection data
+  Client* currentClient; //Client
+} Arguments;
+
+
 int numOfClients = 20; //Initial number of clients.
 int currentNumOfClients = 0; //Current number of clients.
 int numOfGames = 5;
-
-int sendData(int socket, char *buffer, int size) {
-    char *ptr = buffer;
-    int len = 0;
-    while (len < size) {
-        int sent = send(socket, ptr + len, size - len, 0);
-        if (sent == -1) {
-            if (errno == EINTR) {
-                continue;
-            } else {
-                return -1;
-            }
-        }
-        len += sent;
-    }
-    return 0;
-}
 
 void handler() { active = 0; }
 // set up signal handlers for primary thread
@@ -115,7 +105,11 @@ int open_listener(char *service, int queue_size) {
 #define PORTSIZE 10
 
 void *read_data(void *arg) {
-  struct connection_data *con = arg;
+  //Cast the arg to an arguments ptr
+  Arguments* listOfArgs = (Arguments*) arg;
+  //Set the connection data to arguments -> con
+  //And use the client fd to read. 
+  struct connection_data *con = listOfArgs ->connection;
   char buf[BUFSIZE + 1], host[HOSTSIZE], port[PORTSIZE];
   int bytes, error;
   error = getnameinfo((struct sockaddr *)&con->addr, con->addr_len, host,
@@ -125,14 +119,15 @@ void *read_data(void *arg) {
     strcpy(host, "??");
     strcpy(port, "??");
   }
+  Client *client = listOfArgs ->currentClient;
   printf("Connection from %s:%s\n", host, port);
-  while (active && (bytes = read(con->fd, buf, BUFSIZE)) > 0) {
+  while (active && (bytes = read(client ->socket, buf, BUFSIZE)) > 0) {
     buf[bytes] = '\0';
     printf("[%s:%s] read %d bytes |%s|\n", host, port, bytes, buf);
     char buffer[5] = "Boy";
     //Write to the server socket.
     //Check to see if you have sent all of the bytes.
-    int byts = send(con->fd, buffer, strlen(buffer) + 1, 0);
+    int byts = send(client ->socket, buffer, strlen(buffer) + 1, 0);
     if(byts == -1) printf("Can't send message back to server.");
     printf("Number of bytes sent: %d\n", byts);
   }
@@ -144,8 +139,9 @@ void *read_data(void *arg) {
   } else {
     printf("[%s:%s] terminating\n", host, port);
   }
-  close(con->fd);
+  close(client ->socket);
   free(con);
+  free(listOfArgs);
   return NULL;
 }
 
@@ -188,6 +184,11 @@ int main(int argc, char **argv) {
     clients[currentNumOfClients] = client;
     currentNumOfClients++; //To store next client in next position.
 
+    Arguments* listOfArgs = malloc(sizeof(Arguments));
+    //Set the arguments' data
+    listOfArgs -> connection = con;
+    listOfArgs -> currentClient = client; 
+    //Pass that in the pthread create. 
     // temporarily disable signals
     // (the worker thread will inherit this mask, ensuring that SIGINT is
     // only delivered to this thread)
@@ -196,7 +197,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "sigmask: %s\n", strerror(error));
       exit(EXIT_FAILURE);
     }
-    error = pthread_create(&tid, NULL, read_data, con);
+    error = pthread_create(&tid, NULL, read_data, listOfArgs);
     if (error != 0) {
       fprintf(stderr, "pthread_create: %s\n", strerror(error));
       close(con->fd);
@@ -232,5 +233,6 @@ int main(int argc, char **argv) {
     free(clients[i]);
   }
   free(clients);
+
   return EXIT_SUCCESS;
 }
