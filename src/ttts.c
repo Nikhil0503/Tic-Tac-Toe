@@ -174,8 +174,8 @@ int main(int argc, char **argv) {
     client -> socket = con -> fd;
     fprintf(stdout, "%d", client ->socket);
     client -> gameNumber = 0;
-    client ->name = NULL;
-    client ->clientMoves = NULL;
+    client -> name = NULL;
+    client -> clientMoves = NULL;
     //Add it to the array of clients(If need to realloc first, then add)
     if(currentNumOfClients == numOfClients){
       numOfClients *= 2;
