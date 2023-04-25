@@ -83,8 +83,7 @@ typedef struct Player {
   int socket;
   int gameNumber; // Game the Player is in.
   char piece; // If the Player is in a game, it's piece will be either X or O.
-  char *name; // Name of the Player who is playing.
-  char *PlayerMoves;         // Moves the Player makes
+  char name[178];
   struct Player *nextPlayer; // Linked List of Players
 } Player;
 
@@ -98,8 +97,8 @@ struct connection_data {
 typedef struct arguments {
   int waitingRoom[2];
   Player *listOfPlayers;
+  int isActive;
 } Game;
-
 
 /*Counts the number of bars.*/
 int numOfBars(char *buf, int bytes) {
@@ -113,6 +112,8 @@ int numOfBars(char *buf, int bytes) {
 }
 
 int valid(char *buf, int bytes, Player *possiblePlayer) {
+  if (bytes == 0)
+    return 0;
   // const char s[2] = "|";
 
   int numBars = numOfBars(buf, bytes);
@@ -144,21 +145,22 @@ int valid(char *buf, int bytes, Player *possiblePlayer) {
 
       int x = atoi(token);
 
-      //If x > BUFSIZE 
-        if(x > BUFSIZE){
-          return -4; //Too long to store name error message
-        }
+      // If x > BUFSIZE
+      if (x > BUFSIZE) {
+        return -4; // Too long to store name error message
+      }
 
       if (x != 0) {
         // printf("HEllo");
         token = strtok_r(buf, "|", &buf); // get third token
 
-        possiblePlayer -> name = token;
+        memcpy(possiblePlayer ->name, token, strlen(token) + 1);
+
         int length = 0;
 
-        while (*possiblePlayer -> name != '\0') {
+        while (*token != '\0') {
           length++;
-          possiblePlayer -> name++;
+          token++;
         }
 
         length++;
@@ -353,7 +355,7 @@ void insertPlayer(Player **players, Player *playerToInsert) {
     *players = playerToInsert;
   } else {
     Player *current = *players;
-    while (current != NULL) {
+    while (current->nextPlayer != NULL) {
       current = current->nextPlayer;
     }
     current->nextPlayer = playerToInsert;
@@ -388,50 +390,67 @@ void deletePlayer(Player **players, int socketNum) {
   }
 }
 
-//Checks to see if the name exists in the linked list of players.
-int doesPlayerExist(Player *player, char *playerName){
-  //Have a current ptr to player.
+// Checks to see if the name exists in the linked list of players.
+int doesPlayerExist(Player *player, char *playerName) {
+  // Have a current ptr to player.
   Player *current = player;
-  //While cur doesn't equal to null and it's name doesn't equal to the playerName passed in
-  while(current != NULL && strcmp(current ->name, playerName) != 0){
-    //Update ptr to point to next player.
-    current = current ->nextPlayer;
+  // While cur doesn't equal to null and it's name doesn't equal to the
+  // playerName passed in
+  if (current != NULL) fprintf(stdout, "Current playerrrrrrrr: %s\n", current->name);
+  fprintf(stdout, "Current playerrrrrrrr: %s\n", playerName);
+  while (current != NULL) {
+    if (strcmp(current->name, playerName) == 0) return 1;
+    current = current->nextPlayer;
   }
-  //If current is NULL
-  if(current == NULL){
-    //Return 0 (Player doesn't exist)
-    return 0;
-  }else return 1;
-  //Else
-    //Return 1 (Player exists)
+  return 0;
 }
 
-void applyPieceToPlayer(Player* listOfPlayers, int socketNum, char piece){
-    //Current pointer points to the head
-    Player *currentPlayer = listOfPlayers;
-    //While the current pointer isn't null and not contain the socket you are looking for
-    while(currentPlayer != NULL && currentPlayer ->socket != socketNum){
-        //Update the pointer to point to the next node.
-        currentPlayer = currentPlayer ->nextPlayer;
-    }
-    //Apply the piece to the player.
-    currentPlayer ->piece = piece;
-    //Send a begin message to the player
-    char buffer[45] = "BEGN|"; //Begin message
-    char *piecePtr = &piece;
-    strcat(buffer, piecePtr); //Add piece
-    strcat(buffer, "|"); //Add bar
-    strcat(buffer, currentPlayer ->name); //Add name
-    strcat(buffer, "|"); //Add bar
+void beginMessage(Player *playerInGame){
+    char buffer[45] = "BEGN|"; // Begin message
+    char pieceString[2];
+    pieceString[0] = playerInGame -> piece;
+    pieceString[1] = '\0';
+    strcat(buffer, pieceString);            // Add piece
+    strcat(buffer, "|");                 // Add bar
+    strcat(buffer, playerInGame->name); // Add name
+    strcat(buffer, "|");  // Add bar
+    //Send the begin message back.               
+    write(playerInGame ->socket, buffer, strlen(buffer) + 1);
 }
 
-void *playGame(void *arg){
-  //Cast the argument to be a Game.
-  Game *game = (Game*) arg;
-  //Get the waiting room
-  applyPieceToPlayer(game ->listOfPlayers, game ->waitingRoom[0], 'X');
-  applyPieceToPlayer(game ->listOfPlayers, game ->waitingRoom[1], 'O');
-  //Create a method that takes in a linked list of players, socketNum, and X to apply a piece to the player
+Player* applyPieceToPlayer(Player *listOfPlayers, int socketNum, char piece) {
+  // Current pointer points to the head
+  Player *currentPlayer = listOfPlayers;
+  // While the current pointer isn't null and not contain the socket you are
+  // looking for
+  while (currentPlayer != NULL && currentPlayer->socket != socketNum) {
+    // Update the pointer to point to the next node.
+    currentPlayer = currentPlayer->nextPlayer;
+  }
+  // Apply the piece to the player.
+  currentPlayer->piece = piece;
+  return currentPlayer;
+}
+
+void *playGame(void *arg) {
+  // Cast the argument to be a Game.
+  Game *game = (Game *)arg;
+  // Get the waiting room
+  fprintf(stderr, "Socket 1: %d\n", game ->waitingRoom[0]);
+  fprintf(stderr, "Socket 2: %d\n", game ->waitingRoom[1]);
+  // Create a method that takes in a linked list of players, socketNum, and X to
+  // apply a piece to the player
+  //Get both players(The below two methods should return the player.)
+  Player *player1 = applyPieceToPlayer(game->listOfPlayers, game->waitingRoom[0], 'X');
+  Player *player2 = applyPieceToPlayer(game->listOfPlayers, game->waitingRoom[1], 'O');
+  //Create a separate method for begin
+  //Then call it on both players.
+  beginMessage(player1);
+  beginMessage(player2);
+  //Start the game(While loop for game)
+  while(1){
+    
+  }
   return NULL;
 }
 
@@ -449,244 +468,169 @@ int main(int argc, char **argv) {
   int currentNumOfPlayers = 0; // Current number of players.
   int waitingRoom[2]; // When there are two players ready to play a game.
 
-  // Max of 100 games (200 players)
+  // There can only be a maximum of 100 games(No more than that).
+
   while (currentNumOfPlayers != 2) {
     con = (struct connection_data *)malloc(sizeof(struct connection_data));
     con->addr_len = sizeof(struct sockaddr_storage);
-    con->fd = accept(listener, (struct sockaddr *)&con->addr, &con->addr_len);
-    // Create a possiblePlayer for that socket.
     Player *possiblePlayer = malloc(sizeof(Player));
-    possiblePlayer->socket = con->fd;
-    if (con->fd < 0) {
-      strerror(errno);
-      free(con);
-    }else{
-    // Set up the data.
     char buf[BUFSIZE + 1], host[HOSTSIZE], port[PORTSIZE];
-    int bytes, error;
-    error = getnameinfo((struct sockaddr *)&con->addr, con->addr_len, host,
-                        HOSTSIZE, port, PORTSIZE, NI_NUMERICSERV);
-    if (error) {
-      fprintf(stderr, "getnameinfo: %s\n", gai_strerror(error));
-      strcpy(host, "??");
-      strcpy(port, "??");
-    }
-    printf("Connection from %s:%s\n", host, port);
-
-    // Read data
-    bytes = read(possiblePlayer->socket, buf, BUFSIZE);
-
-    // Checking for play message to be valid.
-    int isValid = valid(buf, bytes, possiblePlayer);
-    //If the message is valid = 1
-    if(isValid == 1){
-       //Have a function that goes through the linked list to see if a name exists
-              //Inputs: Name of the possible player and the linked list of players
-      //If so
-      if(doesPlayerExist(players, possiblePlayer ->name)){
-        // Invl message
-        char buffer[50] = "INVL|33|Player already exists in the game|";
-        send(possiblePlayer ->socket, buffer, strlen(buffer) + 1, 0);
-        // Disconnect the possible player
-        close(possiblePlayer ->socket);
-        free(possiblePlayer);
-      }else{ // Else
-        // Send WAIT|0|
-        char buffer[20] = "WAIT|0|";
-        send(possiblePlayer ->socket, buffer, strlen(buffer) + 1, 0);
-        // Add possible player to linked list.
-        insertPlayer(&players, possiblePlayer);
-        // Add to waiting room
-        waitingRoom[currentNumOfPlayers % 2] = possiblePlayer ->socket;
-        // Increment total numnber of players by 1.
-        currentNumOfPlayers++;
-      }
-    }
-    // Else
-    else{
-      //Store the corresponding invl message to the buffer (Look at the return values)
-        //Make sure you include the error message for the return value of -4.
-        char buffer[45];
-       if(isValid == 0){
-        memcpy(buffer, "INVL|23|!Formatted Incorrectly|", 32);
-       } else if(isValid == -10){
-         memcpy(buffer, "INVL|23|!Move is not allowed|", 30);
-       } else if(isValid == -1){
-        memcpy(buffer, "INVL|23|!Length not equal|", 26);
-    } else if(isValid == -2){
-      memcpy(buffer, "INVL|23|!Not X or O|", 20);
-    }
-      //Send to the client socket.
-      send(possiblePlayer ->socket, buffer, strlen(buffer) + 1, 0);
-      //Close the client socket.
-      close(possiblePlayer ->socket);
-      //Delete the client associated with the socket.
-      free(possiblePlayer);
-    }
-
-    // If there are an even amount of players
-    if(currentNumOfPlayers % 2 == 0){
-      // Create an argument struct
-        // Takes in the argument waitroom and the player linked list (which is the game
-        // struct)
-      Game* game = malloc(sizeof(Game));
-      game ->listOfPlayers = players;
-      memcpy(game ->waitingRoom, waitingRoom, 2 * sizeof(int));
-      //Create a playGame method.
-      //Start a game using the pthread create function
-      pthread_t thread;
-      if (pthread_create(&thread, NULL, &playGame, NULL) != 0){
-        //Delete the two clients
-        deletePlayer(&players, game ->waitingRoom[0]);
-        deletePlayer(&players, game ->waitingRoom[1]);
-        //Send invl message to both clients.
-        char invlBuf[56] = "INVL|46|Could not create a game due to network issue.|";
-        send(game ->waitingRoom[0], invlBuf, strlen(invlBuf) + 1, 0);
-        send(game ->waitingRoom[1], invlBuf, strlen(invlBuf) + 1, 0);
-        //Close the sockets
-        close(game ->waitingRoom[0]);
-        close(game ->waitingRoom[1]);
-        //Free the game
-        free(game);
-        //Reset the waitingRoom
-        memset(waitingRoom, 0, 2 * sizeof(int));      
-        //Continue
-        continue;
-      }
-      //Waits for the game to be over.
-      pthread_join(thread, NULL);
-      //Delete the two clients
-        deletePlayer(&players, game ->waitingRoom[0]);
-        deletePlayer(&players, game ->waitingRoom[1]);
-        //Close the sockets
-        close(game ->waitingRoom[0]);
-        close(game ->waitingRoom[1]);
-        //Free the game
-        free(game);
-        //Reset the waitingRoom
-        memset(waitingRoom, 0, 2 * sizeof(int));      
-        //Continue
-        continue;
-    }
-    //Repeat these steps again.
-
-    con = (struct connection_data *)malloc(sizeof(struct connection_data));
-    con->addr_len = sizeof(struct sockaddr_storage);
-    con->fd = accept(listener, (struct sockaddr *)&con->addr, &con->addr_len);
-    // Create a possiblePlayer for that socket.
-    Player *possiblePlayerTwo = malloc(sizeof(Player));
-    possiblePlayerTwo->socket = con->fd;
-    if (con->fd < 0) {
+    possiblePlayer -> socket = accept(listener, (struct sockaddr *)&con->addr, &con->addr_len);
+    if (possiblePlayer -> socket < 0) {
       strerror(errno);
       free(con);
-    }
-
-    //Set each of the bytes in buf, host, and port to 0.
-    memset(buf, 0, strlen(buf));
-    memset(host, 0, strlen(host));
-    memset(port, 0, strlen(port));
-
-    error = getnameinfo((struct sockaddr *)&con->addr, con->addr_len, host,
-                        HOSTSIZE, port, PORTSIZE, NI_NUMERICSERV);
-    if (error) {
-      fprintf(stderr, "getnameinfo: %s\n", gai_strerror(error));
-      strcpy(host, "??");
-      strcpy(port, "??");
-    }
-    printf("Connection from %s:%s\n", host, port);
-
-    // Read data
-    bytes = read(possiblePlayerTwo->socket, buf, BUFSIZE);
-
-    // Checking for play message to be valid.
-    int isValid2 = valid(buf, bytes, possiblePlayerTwo);
-    //If the message is valid = 1
-    if(isValid2 == 1){
-       //Have a function that goes through the linked list to see if a name exists
-              //Inputs: Name of the possible player and the linked list of players
-      //If so
-      if(doesPlayerExist(players, possiblePlayerTwo ->name)){
-        // Invl message
-        char buffer[55] = "INVL|33|Player already exists in the game|";
-        send(possiblePlayerTwo ->socket, buffer, strlen(buffer) + 1, 0);
-        // Disconnect the possible player
-        close(possiblePlayerTwo ->socket);
-        free(possiblePlayerTwo);
-      }else{ // Else
-        // Send WAIT|0|
-        char buffer[20] = "WAIT|0|";
-        send(possiblePlayerTwo ->socket, buffer, strlen(buffer) + 1, 0);
-        // Add possible player to linked list.
-        insertPlayer(&players, possiblePlayerTwo);
-        // Add to waiting room
-        waitingRoom[currentNumOfPlayers % 2] = possiblePlayerTwo ->socket;
-        // Increment total numnber of players by 1.
-        currentNumOfPlayers++;
+      free(possiblePlayer);
+    } else {
+      // Create a possiblePlayer for that socket.
+      possiblePlayer->nextPlayer = NULL;
+      fprintf(stdout, "%d", possiblePlayer->socket);
+      Player* cuy = players;
+      while(cuy != NULL){
+        fprintf(stdout, "Player name: %s\n", cuy ->name);
+        cuy = cuy -> nextPlayer;
       }
-    }
-    // Else
-    else{
-      //Store the corresponding invl message to the buffer (Look at the return values)
-        //Make sure you include the error message for the return value of -4.
-        char buffer[45];
-       if(isValid == 0){
-        memcpy(buffer, "INVL|23|!Formatted Incorrectly|", 32);
-       } else if(isValid == -10){
-         memcpy(buffer, "INVL|23|!Move is not allowed|", 30);
-       } else if(isValid == -1){
-        memcpy(buffer, "INVL|23|!Length not equal|", 26);
-    } else if(isValid == -2){
-      memcpy(buffer, "INVL|23|!Not X or O|", 20);
-    }
-      //Send to the client socket.
-      send(possiblePlayerTwo ->socket, buffer, strlen(buffer) + 1, 0);
-      //Close the client socket.
-      close(possiblePlayerTwo ->socket);
-      //Delete the client associated with the socket.
-      free(possiblePlayerTwo);
-    }
+      // Set up the data.
+      // Memset host and port to be 0.
+      memset(host, 0, HOSTSIZE);
+      memset(port, 0, PORTSIZE);
+      int bytes, error;
+      error = getnameinfo((struct sockaddr *)&con->addr, con->addr_len, host,
+                          HOSTSIZE, port, PORTSIZE, NI_NUMERICSERV);
+      if (error) {
+        fprintf(stderr, "getnameinfo: %s\n", gai_strerror(error));
+        strcpy(host, "??");
+        strcpy(port, "??");
+      }
+      printf("Connection from %s:%s\n", host, port);
 
-    // If there are an even amount of players
-    if(currentNumOfPlayers % 2 == 0){
-      // Create an argument struct
-        // Takes in the argument waitroom and the player linked list (which is the game
-        // struct)
-      Game* game = malloc(sizeof(Game));
-      game ->listOfPlayers = players;
-      memcpy(game ->waitingRoom, waitingRoom, 2 * sizeof(int));
-      //Create a playGame method.
-      //Start a game using the pthread create function
-      pthread_t thread2;
-      if (pthread_create(&thread2, NULL, &playGame, NULL) != 0){
-        //Delete the two clients
-        deletePlayer(&players, game ->waitingRoom[0]);
-        deletePlayer(&players, game ->waitingRoom[1]);
-        //Close the sockets
-        close(game ->waitingRoom[0]);
-        close(game ->waitingRoom[1]);
-        //Free the game
+      // Read data
+      bytes = read(possiblePlayer->socket, buf, BUFSIZE);
+      buf[bytes] = '\0';
+      fprintf(stdout, "Number of Bytes Read: %d\n", bytes);
+
+      char buf2[BUFSIZE];
+      memset(buf2, 0, BUFSIZE);
+
+      memcpy(buf2, buf, strlen(buf) + 1);
+
+      // Checking for play message to be valid.
+      int isValid = valid(buf, bytes, possiblePlayer);
+      fprintf(stdout, "%s\n", possiblePlayer -> name);
+
+      // If the message is valid = 1
+      if (isValid == 1) {
+        // Have a function that goes through the linked list to see if a name
+        // exists Inputs: Name of the possible player and the linked list of
+        // players
+        // If so
+        if (doesPlayerExist(players, possiblePlayer->name)) {
+          // Invl message
+          send(possiblePlayer->socket,
+               "INVL|33|Player already exists in the game|",
+               strlen("INVL|33|Player already exists in the game|"), 0);
+          fprintf(stdout, "Yor:%s\n", players->name);
+          // Disconnect the possible player
+          close(possiblePlayer->socket);
+          free(possiblePlayer);
+        } else { // Else
+          // Send WAIT|0|
+          send(possiblePlayer->socket, "WAIT|0|", strlen("WAIT|0|"), 0);
+          // Add possible player to linked list.
+          insertPlayer(&players, possiblePlayer);
+          fprintf(stdout, "%s\n", players->name);
+          // Add to waiting room
+          waitingRoom[currentNumOfPlayers % 2] = possiblePlayer->socket;
+          // Increment total numnber of players by 1.
+          currentNumOfPlayers++;
+        }
+      }
+      // Else
+      else {
+        // Store the corresponding invl message to the buffer (Look at the
+        // return values) Make sure you include the error message for the return
+        // value of -4.
+        if (isValid == 0) {
+          send(possiblePlayer->socket, "INVL|23|!Formatted Incorrectly|",
+               strlen("INVL|23|!Formatted Incorrectly|"), 0);
+        } else if (isValid == -10) {
+          send(possiblePlayer->socket, "INVL|21|!Move is not allowed|",
+               strlen("INVL|21|!Move is not allowed|"), 0);
+        } else if (isValid == -1) {
+          send(possiblePlayer->socket, "INVL|18|!Length not equal|",
+               strlen("INVL|18|!Length not equal|"), 0);
+        } else if (isValid == -2) {
+          send(possiblePlayer->socket, "INVL|12|!Not X or O|",
+               strlen("INVL|12|!Not X or O|"), 0);
+        } else if (isValid == -4) {
+          send(possiblePlayer->socket, "INVL|18|!Name is too long|",
+               strlen("INVL|18|!Name is too long|"), 0);
+        }
+        // Close the client socket.
+        close(con->fd);
+        // Delete the client associated with the socket.
+        free(possiblePlayer);
+      }
+
+      // If there are an even amount of players
+      if (currentNumOfPlayers > 0 && currentNumOfPlayers % 2 == 0) {
+        // Create an argument struct
+        // Takes in the argument waitroom and the player linked list (which is
+        // the game struct)
+        Game *game = malloc(sizeof(Game));
+        game->listOfPlayers = players;
+        memcpy(game->waitingRoom, waitingRoom, 2 * sizeof(int));
+        // Create a playGame method.
+        // Start a game using the pthread create function
+        pthread_t thread;
+        if (pthread_create(&thread, NULL, &playGame, game) != 0) {
+          // Delete the two clients
+          deletePlayer(&players, game->waitingRoom[0]);
+          deletePlayer(&players, game->waitingRoom[1]);
+          // Send invl message to both clients.
+          send(game->waitingRoom[0],
+               "INVL|46|Could not create a game due to network issue.|",
+               strlen("INVL|46|Could not create a game due to network issue.|"),
+               0);
+          send(game->waitingRoom[1],
+               "INVL|46|Could not create a game due to network issue.|",
+               strlen("INVL|46|Could not create a game due to network issue.|"),
+               0);
+          // Close the sockets
+          close(game->waitingRoom[0]);
+          close(game->waitingRoom[1]);
+          // Free the game
+          free(game);
+          // Reset the waitingRoom
+          memset(waitingRoom, 0, 2 * sizeof(int));
+          // Continue
+          free(con);
+          continue;
+        }
+        // Waits for the game to be over.
+        pthread_join(thread, NULL);
+        // Delete the two clients
+        deletePlayer(&players, game->waitingRoom[0]);
+        deletePlayer(&players, game->waitingRoom[1]);
+        // Close the sockets
+        close(game->waitingRoom[0]);
+        close(game->waitingRoom[1]);
+        // Free the game
         free(game);
-        //Reset the waitingRoom
-        memset(waitingRoom, 0, 2 * sizeof(int));      
-        //Continue
+        // Reset the waitingRoom
+        memset(waitingRoom, 0, 2 * sizeof(int));
+        // Continue
+        free(con);
         continue;
       }
-      //Waits for the game to be over.
-      pthread_join(thread2, NULL);
-      //Delete the two clients
-        deletePlayer(&players, game ->waitingRoom[0]);
-        deletePlayer(&players, game ->waitingRoom[1]);
-        //Close the sockets
-        close(game ->waitingRoom[0]);
-        close(game ->waitingRoom[1]);
-        //Free the game
-        free(game);
-        //Reset the waitingRoom
-        memset(waitingRoom, 0, 2 * sizeof(int));      
-        //Continue
-        continue;
-    }
+      free(con);
+   }
   }
+    // Free the linked list of players.
+    Player *current = players;
+    while (current != NULL) {
+      Player *next = current->nextPlayer;
+      free(current);
+      current = next;
+    }
   return EXIT_SUCCESS;
- }
 }

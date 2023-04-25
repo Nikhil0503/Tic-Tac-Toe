@@ -68,6 +68,7 @@ int connect_inet(char *host, char *service) {
 int main(int argc, char **argv) {
   int sock, bytes;
   char buf[BUFLEN];
+  memset(buf, 0, BUFLEN);
   if (argc < 3) {
     printf("Specify host and service\n");
     exit(EXIT_FAILURE);
@@ -84,11 +85,19 @@ int main(int argc, char **argv) {
     if(success == -1) printf("Can't send message to server.");
     //Receive the response from the server
     char response[150];
+    memset(response, 0, 150);
     int receive = recv(sock, response, 150, 0);
     //Check to see if you have read all of the bytes.
     if(receive == -1) printf("Couldn't receive a response back from the server.");
+    response[receive] = '\0';
     printf("Message sent back: %s\n", response);
     fflush(stdout);
+
+    //Begin Message(In a game)
+    char begin[150];
+    recv(sock, response, 150, 0);
+    printf("Begin message: %s\n", begin);
+    memset(buf, 0, bytes);
   }
   
   close(sock);
